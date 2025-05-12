@@ -1,6 +1,7 @@
 package com.dayanand.raw
 
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,6 +78,7 @@ fun TeamScheduleScreen(
 ) {
     val mainViewModel: MainViewModel = hiltViewModel()
     val scheduleResponse by mainViewModel.schudeleResponse.collectAsState()
+
     when (scheduleResponse) {
         is ApiState.Success -> {
             val schedule = (scheduleResponse as ApiState.Success<*>).data as List<Schedule>
@@ -100,6 +104,7 @@ fun TeamScheduleScreen(
                 CircularProgressIndicator()
             }
         }
+
         else -> {}
     }
 
@@ -142,7 +147,8 @@ fun TopBar(schedule: List<Schedule>, mainViewModel: MainViewModel) {
 
 @Composable
 fun ScheduleContent(scheduleResponse: List<Schedule>, mainViewModel: MainViewModel) {
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    //filter schedule based on search query
     val filteredSchedule by remember(searchQuery, scheduleResponse) {
         derivedStateOf {
             if (searchQuery.isEmpty()) {
@@ -157,10 +163,34 @@ fun ScheduleContent(scheduleResponse: List<Schedule>, mainViewModel: MainViewMod
             }
         }
     }
+    val (groupedItems, lazyListState, date)
+    = prepareHeader(mainViewModel, filteredSchedule)
+    Column(modifier = Modifier.fillMaxSize()) {
+        SearchBar(searchQuery) { searchQuery = it }
+        ScheduleHeader(date)
+        LazyColumn(modifier = Modifier, state = lazyListState) {
+            groupedItems.forEach { (_, schedule) ->
+                items(schedule) {
+                    when (it.st) {
+                        2, 3 -> GameCard(it, mainViewModel)
+                        1 -> GameCardWithButton(it, mainViewModel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun prepareHeader(
+    mainViewModel: MainViewModel,
+    filteredSchedule: List<Schedule>
+): Triple<Map<String, List<Schedule>>, LazyListState, String> {
     val currentDate = mainViewModel.currentDate
     val groupedItems = filteredSchedule.groupBy { it.gametime }
     val lazyListState = rememberLazyListState()
     var currentHeader by remember { mutableStateOf(groupedItems.keys.firstOrNull() ?: currentDate) }
+    SideEffect {Log.d("TAG", "Value increase: $currentHeader")  }
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.firstVisibleItemIndex }
             .collect { firstVisibleIndex ->
@@ -172,21 +202,7 @@ fun ScheduleContent(scheduleResponse: List<Schedule>, mainViewModel: MainViewMod
             }
     }
     val date = mainViewModel.headerDate(currentHeader)
-    Column(modifier = Modifier.fillMaxSize()) {
-        SearchBar(searchQuery) { searchQuery = it }
-        ScheduleHeader(date)
-        LazyColumn(modifier = Modifier, state = lazyListState) {
-            groupedItems.forEach { (_, schedule) ->
-                items(schedule) {
-
-                    when (it.st) {
-                        2, 3 -> GameCard(it, mainViewModel)
-                        1 -> GameCardWithButton(it, mainViewModel)
-                    }
-                }
-            }
-        }
-    }
+    return Triple(groupedItems, lazyListState, date)
 }
 
 @Composable
@@ -461,7 +477,9 @@ fun GameCardWithButton(schedule: Schedule, mainViewModel: MainViewModel) {
                 })
 
             Button(
-                onClick = { Toast.makeText(context, "Under development", Toast.LENGTH_SHORT).show() },
+                onClick = {
+                    Toast.makeText(context, "Under development", Toast.LENGTH_SHORT).show()
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                 modifier = Modifier.constrainAs(ticketButton) {
                     top.linkTo(teamBIcons.bottom, 10.dp)
@@ -484,3 +502,4 @@ fun GreetingPreview() {
 
     }
 }
+
